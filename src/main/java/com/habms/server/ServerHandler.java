@@ -305,9 +305,9 @@ public class ServerHandler implements Runnable {
                             String[] candidates = new String[]{"C:\\Windows\\Fonts\\msyh.ttf","C:\\Windows\\Fonts\\simhei.ttf","C:\\Windows\\Fonts\\simsun.ttf"};
                             for (String p : candidates) {
                                 java.io.File ff = new java.io.File(p);
-                                if (ff.exists()) { System.out.println(">>>"+p);cjkFont = PDType0Font.load(doc, ff); break; }
+                                if (ff.exists()) { cjkFont = PDType0Font.load(doc, ff); break; }
                             }
-                        } catch (Exception ignore) {System.out.println(">>>"+ignore); cjkFont = null; }
+                        } catch (Exception ignore) { cjkFont = null; }
                         if (cjkFont != null) {
                             cs.setFont(cjkFont, 14);
                             cs.beginText(); cs.newLineAtOffset(50, 700);
