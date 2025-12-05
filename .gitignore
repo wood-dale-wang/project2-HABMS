@@ -1,8 +1,10 @@
 .vscode
 target
 desine.md
-项目要求.pdf
-面向对象技术大作业二(基于华为云).pdf
-面向对象技术大作业二(基于华为云).docx
 habmsdb
 derby.log
+tools/server.*
+*.docx
+*.xlsx
+*.pdf
+server.*

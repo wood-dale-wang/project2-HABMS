@@ -32,6 +32,13 @@ public class ClientApp {
     // UI controls referenced for role enable/disable
     private JButton addDoctorBtn, updateDoctorBtn, addScheduleBtn, listSchedulesBtn;
     private JButton updateAccountBtn, deleteAccountBtn, logoutBtn;
+    // additional buttons
+    private JButton listApptsBtn;
+    private JButton myApptsBtn;
+    // file/report buttons
+    private JButton importXlsBtn;
+    private JButton exportApptsBtn;
+    private JButton genReportBtn;
 
     private static final ObjectMapper mapper = new ObjectMapper();
 
@@ -69,8 +76,8 @@ public class ClientApp {
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
         JButton listDoc = new JButton("查看医生列表");
         listDoc.addActionListener(e -> doListDoctors());
-        JButton listAppts = new JButton("查看某医生预约");
-        listAppts.addActionListener(e -> {
+        listApptsBtn = new JButton("查看某医生预约");
+        listApptsBtn.addActionListener(e -> {
             String id = JOptionPane.showInputDialog(frame, "输入医生ID");
             if (id!=null) doListAppts(id);
         });
@@ -78,9 +85,26 @@ public class ClientApp {
         book.addActionListener(e -> {
             if (currentUser==null) { JOptionPane.showMessageDialog(frame, "请先登录或注册"); return; }
             String docId = JOptionPane.showInputDialog(frame, "医生ID");
-            String name = JOptionPane.showInputDialog(frame, "病人姓名");
-            String time = JOptionPane.showInputDialog(frame, "时间 (yyyy-MM-dd'T'HH:mm)");
-            if (docId!=null && name!=null && time!=null) doBook(docId, name, time);
+            if (docId==null) return;
+            JPanel panel = new JPanel(new GridLayout(0,2));
+            JTextField dateField = new JTextField();
+            JTextField hField = new JTextField();
+            JTextField mField = new JTextField();
+            JTextField nameField = new JTextField();
+            panel.add(new JLabel("日期 (yyyy-MM-dd):")); panel.add(dateField);
+            panel.add(new JLabel("小时 (0-23):")); panel.add(hField);
+            panel.add(new JLabel("分钟 (0-59):")); panel.add(mField);
+            panel.add(new JLabel("病人姓名:")); panel.add(nameField);
+            int res = JOptionPane.showConfirmDialog(frame, panel, "预约", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+            if (res != JOptionPane.OK_OPTION) return;
+            try {
+                java.time.LocalDate date = java.time.LocalDate.parse(dateField.getText().trim());
+                int hh = Integer.parseInt(hField.getText().trim()); int mm = Integer.parseInt(mField.getText().trim());
+                if (hh<0||hh>23||mm<0||mm>59) { JOptionPane.showMessageDialog(frame, "时间不合法"); return; }
+                java.time.LocalDateTime time = date.atTime(hh, mm);
+                String pname = nameField.getText().trim();
+                doBookWithDatetime(docId, pname, time);
+            } catch (Exception ex) { JOptionPane.showMessageDialog(frame, "输入格式错误: " + ex.getMessage()); }
         });
         JButton cancel = new JButton("取消预约");
         cancel.addActionListener(e -> {
@@ -118,15 +142,52 @@ public class ClientApp {
         addScheduleBtn = new JButton("添加排班");
         addScheduleBtn.addActionListener(e -> {
             String did = JOptionPane.showInputDialog(frame, "医生ID");
-            String time = JOptionPane.showInputDialog(frame, "时间 (yyyy-MM-dd'T'HH:mm)");
-            String note = JOptionPane.showInputDialog(frame, "备注");
-            if (did!=null && time!=null) doAddSchedule(did, time, note==null?"":note);
+            if (did==null) return;
+            // build a panel to collect date, start hour/min, end hour/min, capacity, note
+            JPanel panel = new JPanel(new GridLayout(0,2));
+            JTextField dateField = new JTextField(); // yyyy-MM-dd
+            JTextField shField = new JTextField(); // start hour
+            JTextField smField = new JTextField(); // start minute
+            JTextField ehField = new JTextField(); // end hour
+            JTextField emField = new JTextField(); // end minute
+            JTextField capField = new JTextField("1");
+            JTextField noteField = new JTextField();
+            panel.add(new JLabel("日期 (yyyy-MM-dd):")); panel.add(dateField);
+            panel.add(new JLabel("开始小时 (0-23):")); panel.add(shField);
+            panel.add(new JLabel("开始分钟 (0-59):")); panel.add(smField);
+            panel.add(new JLabel("结束小时 (0-23):")); panel.add(ehField);
+            panel.add(new JLabel("结束分钟 (0-59):")); panel.add(emField);
+            panel.add(new JLabel("容量 (整数):")); panel.add(capField);
+            panel.add(new JLabel("备注:")); panel.add(noteField);
+            int res = JOptionPane.showConfirmDialog(frame, panel, "添加排班", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+            if (res != JOptionPane.OK_OPTION) return;
+            String date = dateField.getText().trim();
+            String sh = shField.getText().trim(); String sm = smField.getText().trim();
+            String eh = ehField.getText().trim(); String em = emField.getText().trim();
+            String cap = capField.getText().trim(); String note = noteField.getText().trim();
+            // basic validation
+            try {
+                int sh_i = Integer.parseInt(sh); int sm_i = Integer.parseInt(sm); int eh_i = Integer.parseInt(eh); int em_i = Integer.parseInt(em); int capacity = Integer.parseInt(cap);
+                if (sh_i<0||sh_i>23||eh_i<0||eh_i>23||sm_i<0||sm_i>59||em_i<0||em_i>59) { JOptionPane.showMessageDialog(frame, "时间部分不合法"); return; }
+                java.time.LocalDate startDate = java.time.LocalDate.parse(date);
+                java.time.LocalDateTime start = startDate.atTime(sh_i, sm_i);
+                java.time.LocalDateTime end = startDate.atTime(eh_i, em_i);
+                if (!end.isAfter(start)) { JOptionPane.showMessageDialog(frame, "结束时间必须晚于开始时间"); return; }
+                doAddScheduleWithParts(did, start, end, note, capacity);
+            } catch (Exception ex) { JOptionPane.showMessageDialog(frame, "输入格式错误: " + ex.getMessage()); return; }
         });
         listSchedulesBtn = new JButton("查看排班");
         listSchedulesBtn.addActionListener(e -> {
             String id = JOptionPane.showInputDialog(frame, "医生ID");
             if (id!=null) doListSchedules(id);
         });
+
+        importXlsBtn = new JButton("导入医生/排班 (XLS)");
+        importXlsBtn.addActionListener(e -> doImportXls());
+        exportApptsBtn = new JButton("导出预约 (XLS)");
+        exportApptsBtn.addActionListener(e -> doExportAppointmentsXls());
+        genReportBtn = new JButton("生成统计报表 (PDF)");
+        genReportBtn.addActionListener(e -> doGenerateReportPdf());
 
         // Account management
         updateAccountBtn = new JButton("修改个人信息");
@@ -137,13 +198,16 @@ public class ClientApp {
         logoutBtn.addActionListener(e -> onLogout());
 
         // add buttons to panel
-        buttonPanel.add(listDoc); buttonPanel.add(listAppts); buttonPanel.add(book); buttonPanel.add(cancel);
+        buttonPanel.add(listDoc); buttonPanel.add(listApptsBtn); buttonPanel.add(book); buttonPanel.add(cancel);
         buttonPanel.add(searchName); buttonPanel.add(searchDept);
         buttonPanel.add(addDoctorBtn); buttonPanel.add(updateDoctorBtn); buttonPanel.add(addScheduleBtn); buttonPanel.add(listSchedulesBtn);
-        buttonPanel.add(updateAccountBtn); buttonPanel.add(deleteAccountBtn); buttonPanel.add(logoutBtn);
+        buttonPanel.add(importXlsBtn); buttonPanel.add(exportApptsBtn); buttonPanel.add(genReportBtn);
+        myApptsBtn = new JButton("查看本人预约");
+        myApptsBtn.addActionListener(e -> doListMyAppts());
+        buttonPanel.add(updateAccountBtn); buttonPanel.add(deleteAccountBtn); buttonPanel.add(myApptsBtn); buttonPanel.add(logoutBtn);
 
         JScrollPane buttonScroll = new JScrollPane(buttonPanel, JScrollPane.VERTICAL_SCROLLBAR_NEVER, JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
-        buttonScroll.setPreferredSize(new Dimension(900, 120));
+        buttonScroll.setPreferredSize(new Dimension(900, 140));
 
         p.add(top, BorderLayout.NORTH);
         p.add(centerPanel, BorderLayout.CENTER);
@@ -185,11 +249,20 @@ public class ClientApp {
         } catch (Exception ex) { ta.append("错误: " + ex.getMessage() + "\n"); }
     }
 
-    private void doBook(String docId, String name, String time) {
+    private void doBookWithDatetime(String docId, String name, java.time.LocalDateTime time) {
         try {
-            Map req = Map.of("action","book","doctorId", Integer.parseInt(docId), "patientName", name, "time", time);
+            Map req = Map.of("action","book","doctorId", Integer.parseInt(docId), "patientName", name, "time", time.format(fmt));
             Map resp = sendJsonRequest(req);
-            ta.append(String.valueOf(resp) + "\n");
+            if (resp.containsKey("message")) ta.append(resp.get("message") + "\n");
+            else ta.append(String.valueOf(resp) + "\n");
+        } catch (Exception ex) { ta.append("错误: " + ex.getMessage() + "\n"); }
+    }
+
+    private void doListMyAppts() {
+        try {
+            Map resp = sendJsonRequest(Map.of("action","list_my_appts"));
+            if ("OK".equals(resp.get("status"))) showTable((List)resp.get("data"));
+            else ta.append("ERROR: " + resp.get("message") + "\n");
         } catch (Exception ex) { ta.append("错误: " + ex.getMessage() + "\n"); }
     }
 
@@ -239,9 +312,9 @@ public class ClientApp {
         } catch (Exception ex) { ta.append("错误: " + ex.getMessage() + "\n"); }
     }
 
-    private void doAddSchedule(String did, String time, String note) {
+    private void doAddScheduleWithParts(String did, java.time.LocalDateTime start, java.time.LocalDateTime end, String note, int capacity) {
         try {
-            Map req = Map.of("action","add_schedule","doctorId", Integer.parseInt(did), "time",time,"note",note);
+            Map req = Map.of("action","add_schedule","doctorId", Integer.parseInt(did), "start", start.format(fmt), "end", end.format(fmt), "note", note==null?"":note, "capacity", capacity);
             Map resp = sendJsonRequest(req);
             ta.append(String.valueOf(resp) + "\n");
         } catch (Exception ex) { ta.append("错误: " + ex.getMessage() + "\n"); }
@@ -332,10 +405,57 @@ public class ClientApp {
         addDoctorBtn.setEnabled(isAdmin);
         updateDoctorBtn.setEnabled(isAdmin);
         addScheduleBtn.setEnabled(isAdmin);
+        importXlsBtn.setEnabled(isAdmin);
+        exportApptsBtn.setEnabled(isAdmin);
+        genReportBtn.setEnabled(isAdmin);
         listSchedulesBtn.setEnabled(true);
         updateAccountBtn.setEnabled(currentUser!=null && "PATIENT".equals(currentRole));
         deleteAccountBtn.setEnabled(currentUser!=null && "PATIENT".equals(currentRole));
         logoutBtn.setEnabled(currentUser!=null);
+    }
+
+    private void doImportXls() {
+        JFileChooser chooser = new JFileChooser();
+        chooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("Excel files","xls","xlsx"));
+        int res = chooser.showOpenDialog(frame);
+        if (res != JFileChooser.APPROVE_OPTION) return;
+        File f = chooser.getSelectedFile();
+        try {
+            byte[] data = java.nio.file.Files.readAllBytes(f.toPath());
+            String b64 = java.util.Base64.getEncoder().encodeToString(data);
+            Map resp = sendJsonRequest(Map.of("action","import_doctors_xls","content", b64));
+            ta.append(String.valueOf(resp) + "\n");
+        } catch (Exception ex) { ta.append("错误: " + ex.getMessage() + "\n"); }
+    }
+
+    private void doExportAppointmentsXls() {
+        try {
+            Map resp = sendJsonRequest(Map.of("action","export_appointments_xls"));
+            if (!"OK".equals(resp.get("status"))) { ta.append("ERROR: " + resp.get("message") + "\n"); return; }
+            String b64 = (String) resp.get("content");
+            byte[] data = java.util.Base64.getDecoder().decode(b64);
+            JFileChooser chooser = new JFileChooser();
+            chooser.setSelectedFile(new File((String)resp.getOrDefault("filename","appointments.xlsx")));
+            int res = chooser.showSaveDialog(frame);
+            if (res != JFileChooser.APPROVE_OPTION) return;
+            java.nio.file.Files.write(chooser.getSelectedFile().toPath(), data);
+            ta.append("已保存: " + chooser.getSelectedFile().getAbsolutePath() + "\n");
+        } catch (Exception ex) { ta.append("错误: " + ex.getMessage() + "\n"); }
+    }
+
+    private void doGenerateReportPdf() {
+        try {
+            Map resp = sendJsonRequest(Map.of("action","generate_report_pdf"));
+            if (!"OK".equals(resp.get("status"))) { ta.append("ERROR: " + resp.get("message") + "\n"); return; }
+            String b64 = (String) resp.get("content");
+            byte[] data = java.util.Base64.getDecoder().decode(b64);
+            JFileChooser chooser = new JFileChooser();
+            chooser.setSelectedFile(new File((String)resp.getOrDefault("filename","report.pdf")));
+            int res = chooser.showSaveDialog(frame);
+            if (res != JFileChooser.APPROVE_OPTION) return;
+            java.nio.file.Files.write(chooser.getSelectedFile().toPath(), data);
+            ta.append("已保存: " + chooser.getSelectedFile().getAbsolutePath() + "\n");
+        } catch (Exception ex) { ta.append("错误: " + ex.getMessage() + "\n"); }
     }
 
     private void ensureConnection() throws IOException {
