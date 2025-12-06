@@ -436,36 +436,40 @@ public class Database {
     }
 
     // search doctors
-    public static String searchDoctorsByName(String name) throws SQLException {
-        StringBuilder sb = new StringBuilder();
+    public static List<Map<String, String>> searchDoctorsByName(String name) throws SQLException {
+        List<Map<String, String>> list = new ArrayList<>();
         try (Connection conn = DriverManager.getConnection(DB_URL)) {
             PreparedStatement ps = conn.prepareStatement("SELECT id,name,dept,info FROM doctors WHERE name LIKE ?");
             ps.setString(1, "%" + name + "%");
             ResultSet rs = ps.executeQuery();
             while (rs.next()) {
-                sb.append(rs.getInt("id")).append("|")
-                  .append(rs.getString("name")).append("|")
-                  .append(rs.getString("dept")).append("|")
-                  .append(rs.getString("info")).append("\n");
+                Map<String, String> m = new HashMap<>();
+                m.put("id", String.valueOf(rs.getInt("id")));
+                m.put("name", rs.getString("name"));
+                m.put("dept", rs.getString("dept"));
+                m.put("info", rs.getString("info"));
+                list.add(m);
             }
         }
-        return sb.toString();
+        return list;
     }
 
-    public static String searchDoctorsByDept(String dept) throws SQLException {
-        StringBuilder sb = new StringBuilder();
+    public static List<Map<String, String>> searchDoctorsByDept(String dept) throws SQLException {
+        List<Map<String, String>> list = new ArrayList<>();
         try (Connection conn = DriverManager.getConnection(DB_URL)) {
             PreparedStatement ps = conn.prepareStatement("SELECT id,name,dept,info FROM doctors WHERE dept LIKE ?");
             ps.setString(1, "%" + dept + "%");
             ResultSet rs = ps.executeQuery();
             while (rs.next()) {
-                sb.append(rs.getInt("id")).append("|")
-                  .append(rs.getString("name")).append("|")
-                  .append(rs.getString("dept")).append("|")
-                  .append(rs.getString("info")).append("\n");
+                Map<String, String> m = new HashMap<>();
+                m.put("id", String.valueOf(rs.getInt("id")));
+                m.put("name", rs.getString("name"));
+                m.put("dept", rs.getString("dept"));
+                m.put("info", rs.getString("info"));
+                list.add(m);
             }
         }
-        return sb.toString();
+        return list;
     }
 
     public static boolean addDoctor(String name, String dept, String info) throws SQLException {

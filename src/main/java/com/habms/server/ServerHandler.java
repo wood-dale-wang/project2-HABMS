@@ -128,16 +128,16 @@ public class ServerHandler implements Runnable {
                 }
                 case "search_name": {
                     String q = (String) req.get("q");
-                    String raw = Database.searchDoctorsByName(q);
-                    resp.put("status","OK");
-                    resp.put("raw", raw);
+                    List<Map<String, String>> list = Database.searchDoctorsByName(q);
+                    resp.put("status", "OK");
+                    resp.put("data", list);
                     break;
                 }
                 case "search_dept": {
                     String q = (String) req.get("q");
-                    String raw = Database.searchDoctorsByDept(q);
-                    resp.put("status","OK");
-                    resp.put("raw", raw);
+                    List<Map<String, String>> list = Database.searchDoctorsByDept(q);
+                    resp.put("status", "OK");
+                    resp.put("data", list);
                     break;
                 }
                 case "list_doctors": {
