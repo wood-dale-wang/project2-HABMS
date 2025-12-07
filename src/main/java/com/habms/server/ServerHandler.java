@@ -14,7 +14,6 @@ import java.util.Base64;
 
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
-import org.apache.poi.openxml4j.exceptions.InvalidFormatException;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
@@ -73,7 +72,7 @@ public class ServerHandler implements Runnable {
 
     private String handleJson(String json) {
         try {
-            Map req = mapper.readValue(json, Map.class);
+            Map<String,Object> req = mapper.readValue(json, Map.class);
             String action = (String) req.get("action");
             Map<String, Object> resp = new HashMap<>();
             switch (action) {
