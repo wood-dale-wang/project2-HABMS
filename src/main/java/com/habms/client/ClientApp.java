@@ -1,7 +1,5 @@
 package com.habms.client;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-
 import javax.swing.*;
 import javax.swing.border.LineBorder;
 import javax.swing.text.JTextComponent;
@@ -11,7 +9,6 @@ import java.awt.event.ActionEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.*;
-import java.net.Socket;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Calendar;
@@ -22,16 +19,18 @@ import java.util.Map;
 public class ClientApp {
     private static final String HOST = "127.0.0.1";
     private static final int PORT = 9090;
-    private Socket socket;
-    private BufferedReader in;
-    private BufferedWriter out;
+    private ClientService service;
+    private ClientController controller;
     private JFrame frame;
-    private JPanel centerPanel;
+    private CardLayout viewLayout;
+    private JPanel viewPanel;
+    private AppPanel appPanel;
+    private LoginPanel loginPanel;
+    private JLabel topUserLabel;
+    private JLabel topTimeLabel;
     private JPanel displayPanel;
     private DefaultListModel<String> messageModel;
     private JList<String> messageList;
-    private JTextField userField;
-    private JPasswordField passField;
     private DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm");
     private String currentUser = null;
     private String currentRole = null;
@@ -49,7 +48,7 @@ public class ClientApp {
     // container of action buttons, toggled by login state
     private JScrollPane buttonScroll;
 
-    private static final ObjectMapper mapper = new ObjectMapper();
+    private javax.swing.Timer clockTimer;
 
     public static void main(String[] args) {
         // use system look and feel for better native appearance
@@ -62,37 +61,40 @@ public class ClientApp {
     private void createAndShowGUI() {
         frame = new JFrame("医院预约系统 客户端");
         frame.setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
-        frame.setSize(900, 600);
-        JPanel p = new JPanel(new BorderLayout());
-        p.setBorder(BorderFactory.createEmptyBorder(8,8,8,8));
+        frame.setSize(1000, 640);
 
-        JPanel top = new JPanel();
-        userField = new JTextField(10);
-        passField = new JPasswordField(10);
-        JButton loginBtn = new JButton("登录");
-        loginBtn.addActionListener(this::onLogin);
-        JButton registerBtn = new JButton("注册");
-        registerBtn.addActionListener(e -> onRegister());
-        top.add(new JLabel("用户名"));top.add(userField);
-        top.add(new JLabel("密码"));top.add(passField);
-        top.add(loginBtn);
-        top.add(registerBtn);
+        service = new ClientService(HOST, PORT);
+        controller = new ClientController(service);
 
-        messageModel = new DefaultListModel<>();
-        messageList = new JList<>(messageModel);
-        messageList.setVisibleRowCount(6);
-        messageList.setFont(messageList.getFont().deriveFont(13f));
-        centerPanel = new JPanel(new BorderLayout());
-        displayPanel = new JPanel(new BorderLayout());
-        centerPanel.add(displayPanel, BorderLayout.CENTER);
-        JScrollPane logScroll = new JScrollPane(messageList);
-        logScroll.setPreferredSize(new Dimension(0, 140));
-        centerPanel.add(logScroll, BorderLayout.SOUTH);
+        viewLayout = new CardLayout();
+        viewPanel = new JPanel(viewLayout);
 
-        JPanel buttonPanel = new JPanel();
-        buttonPanel.setLayout(new BoxLayout(buttonPanel, BoxLayout.Y_AXIS));
-        buttonPanel.setBorder(BorderFactory.createTitledBorder("操作"));
-        buttonPanel.setAlignmentY(Component.TOP_ALIGNMENT);
+        loginPanel = new LoginPanel();
+        loginPanel.setListener(new LoginPanel.Listener() {
+            @Override
+            public void onLogin(String username, String password) {
+                ClientApp.this.onLogin(username, password);
+            }
+
+            @Override
+            public void onExit() { ClientApp.this.onExit(); }
+
+            @Override
+            public void onRegister() { ClientApp.this.onRegister(); }
+        });
+
+        appPanel = new AppPanel();
+        messageModel = appPanel.getMessageModel();
+        messageList = appPanel.getMessageList();
+        displayPanel = appPanel.getDisplayPanel();
+        buttonScroll = appPanel.getButtonScroll();
+        JPanel buttonPanel = appPanel.getButtonPanel();
+        topUserLabel = appPanel.getTopUserLabel();
+        topTimeLabel = appPanel.getTopTimeLabel();
+        JButton topLogoutBtn = appPanel.getLogoutButton();
+        JButton topDeleteBtn = appPanel.getDeleteAccountButton();
+        topLogoutBtn.addActionListener(e -> onLogout());
+        topDeleteBtn.addActionListener(e -> onDeleteAccount());
         JButton listDoc = new JButton("查看医生列表");
         listDoc.addActionListener(e -> doListDoctors());
         listApptsBtn = new JButton("查看某医生预约");
@@ -281,54 +283,48 @@ public class ClientApp {
         logoutBtn = new JButton("退出登录");
         logoutBtn.addActionListener(e -> onLogout());
 
-        // add buttons to panel (vertical sidebar)
-        addSidebarButton(buttonPanel, listDoc);
-        addSidebarButton(buttonPanel, listApptsBtn);
-        addSidebarButton(buttonPanel, book);
-        addSidebarButton(buttonPanel, cancel);
-        addSidebarButton(buttonPanel, searchName);
-        addSidebarButton(buttonPanel, searchDept);
-        addSidebarButton(buttonPanel, addDoctorBtn);
-        addSidebarButton(buttonPanel, updateDoctorBtn);
-        addSidebarButton(buttonPanel, addScheduleBtn);
-        addSidebarButton(buttonPanel, listSchedulesBtn);
-        addSidebarButton(buttonPanel, importXlsBtn);
-        addSidebarButton(buttonPanel, exportApptsBtn);
-        addSidebarButton(buttonPanel, genReportBtn);
+        // add buttons to bar (bottom)
+        addActionButton(buttonPanel, listDoc);
+        addActionButton(buttonPanel, listApptsBtn);
+        addActionButton(buttonPanel, book);
+        addActionButton(buttonPanel, cancel);
+        addActionButton(buttonPanel, searchName);
+        addActionButton(buttonPanel, searchDept);
+        addActionButton(buttonPanel, addDoctorBtn);
+        addActionButton(buttonPanel, updateDoctorBtn);
+        addActionButton(buttonPanel, addScheduleBtn);
+        addActionButton(buttonPanel, listSchedulesBtn);
+        addActionButton(buttonPanel, importXlsBtn);
+        addActionButton(buttonPanel, exportApptsBtn);
+        addActionButton(buttonPanel, genReportBtn);
         myApptsBtn = new JButton("查看本人预约");
         myApptsBtn.addActionListener(e -> doListMyAppts());
-        addSidebarButton(buttonPanel, updateAccountBtn);
-        addSidebarButton(buttonPanel, deleteAccountBtn);
-        addSidebarButton(buttonPanel, myApptsBtn);
-        addSidebarButton(buttonPanel, logoutBtn);
+        addActionButton(buttonPanel, updateAccountBtn);
+        addActionButton(buttonPanel, deleteAccountBtn);
+        addActionButton(buttonPanel, myApptsBtn);
+        addActionButton(buttonPanel, logoutBtn);
 
-        buttonScroll = new JScrollPane(buttonPanel, JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED, JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
-        buttonScroll.setPreferredSize(new Dimension(260, 0));
-        // hide until logged in
-        buttonScroll.setVisible(false);
+        viewPanel.add(loginPanel, "login");
+        viewPanel.add(appPanel, "app");
+        frame.getContentPane().add(viewPanel);
 
-        p.add(top, BorderLayout.NORTH);
-        p.add(centerPanel, BorderLayout.CENTER);
-        p.add(buttonScroll, BorderLayout.WEST);
-
-        frame.getContentPane().add(p);
         frame.addWindowListener(new WindowAdapter() {
             @Override
             public void windowClosing(WindowEvent e) {
                 // try to notify server
-                try { if (currentUser!=null) sendJsonRequest(Map.of("action","logout")); } catch (Exception ex) {}
-                try { if (socket!=null) socket.close(); } catch (Exception ex) {}
+                try { if (currentUser!=null) service.send(Map.of("action","logout")); } catch (Exception ex) {}
+                try { service.close(); } catch (Exception ex) {}
                 frame.dispose();
                 System.exit(0);
             }
         });
         frame.setVisible(true);
-        updateUIForRole();
+        showLoginPage();
     }
 
     private void doListDoctors() {
         try {
-            Map resp = sendJsonRequest(Map.of("action","list_doctors"));
+            Map resp = controller.listDoctors();
             if ("OK".equals(resp.get("status"))) {
                 Object data = resp.get("data");
                 if (data instanceof List) showTable((List) data);
@@ -340,8 +336,7 @@ public class ClientApp {
 
     private void doListAppts(String id) {
         try {
-            Map req = Map.of("action","list_appts", "doctorId", Integer.parseInt(id));
-            Map resp = sendJsonRequest(req);
+            Map resp = controller.listAppts(Integer.parseInt(id));
             if ("OK".equals(resp.get("status"))) { showTable((List)resp.get("data")); }
             else addMessage("ERROR: " + resp.get("message"));
         } catch (Exception ex) { addMessage("错误: " + ex.getMessage()); }
@@ -349,8 +344,7 @@ public class ClientApp {
 
     private void doBookWithDatetime(String docId, String name, java.time.LocalDateTime time) {
         try {
-            Map req = Map.of("action","book","doctorId", Integer.parseInt(docId), "patientName", name, "time", time.format(fmt));
-            Map resp = sendJsonRequest(req);
+            Map resp = controller.book(Integer.parseInt(docId), name, time.format(fmt));
             if (resp.containsKey("message")) addMessage((String)resp.get("message"));
             else addMessage(String.valueOf(resp));
         } catch (Exception ex) { addMessage("错误: " + ex.getMessage()); }
@@ -358,7 +352,7 @@ public class ClientApp {
 
     private void doListMyAppts() {
         try {
-            Map resp = sendJsonRequest(Map.of("action","list_my_appts"));
+            Map resp = controller.listMyAppts();
             if ("OK".equals(resp.get("status"))) showTable((List)resp.get("data"));
             else addMessage("ERROR: " + resp.get("message"));
         } catch (Exception ex) { addMessage("错误: " + ex.getMessage()); }
@@ -366,16 +360,14 @@ public class ClientApp {
 
     private void doCancel(String apid) {
         try {
-            Map req = Map.of("action","cancel","apptId", Integer.parseInt(apid));
-            Map resp = sendJsonRequest(req);
+            Map resp = controller.cancel(Integer.parseInt(apid));
             addMessage(String.valueOf(resp));
         } catch (Exception ex) { addMessage("错误: " + ex.getMessage()); }
     }
 
     private void doSearchName(String q) {
         try {
-            Map req = Map.of("action","search_name","q", q);
-            Map resp = sendJsonRequest(req);
+            Map resp = controller.searchName(q);
             if ("OK".equals(resp.get("status"))) {
                 if (resp.containsKey("data")) showTable((List)resp.get("data"));
             } else addMessage("ERROR: " + resp.get("message"));
@@ -384,8 +376,7 @@ public class ClientApp {
 
     private void doSearchDept(String q) {
         try {
-            Map req = Map.of("action","search_dept","q", q);
-            Map resp = sendJsonRequest(req);
+            Map resp = controller.searchDept(q);
             if ("OK".equals(resp.get("status"))) {
                 if (resp.containsKey("data")) showTable((List)resp.get("data"));
             } else addMessage("ERROR: " + resp.get("message"));
@@ -394,47 +385,45 @@ public class ClientApp {
 
     private void doAddDoctor(String name, String dept, String info) {
         try {
-            Map req = Map.of("action","add_doctor","name",name,"dept",dept,"info",info);
-            Map resp = sendJsonRequest(req);
+            Map resp = controller.addDoctor(name, dept, info);
             addMessage(String.valueOf(resp));
         } catch (Exception ex) { addMessage("错误: " + ex.getMessage()); }
     }
 
     private void doUpdateDoctor(String id, String name, String dept, String info) {
         try {
-            Map req = Map.of("action","update_doctor","id", Integer.parseInt(id), "name",name,"dept",dept,"info",info);
-            Map resp = sendJsonRequest(req);
+            Map resp = controller.updateDoctor(Integer.parseInt(id), name, dept, info);
             addMessage(String.valueOf(resp));
         } catch (Exception ex) { addMessage("错误: " + ex.getMessage()); }
     }
 
     private void doAddScheduleWithParts(String did, java.time.LocalDateTime start, java.time.LocalDateTime end, String note, int capacity) {
         try {
-            Map req = Map.of("action","add_schedule","doctorId", Integer.parseInt(did), "start", start.format(fmt), "end", end.format(fmt), "note", note==null?"":note, "capacity", capacity);
-            Map resp = sendJsonRequest(req);
+            Map resp = controller.addSchedule(Integer.parseInt(did), start.format(fmt), end.format(fmt), note, capacity);
             addMessage(String.valueOf(resp));
         } catch (Exception ex) { addMessage("错误: " + ex.getMessage()); }
     }
 
     private void doListSchedules(String id) {
         try {
-            Map req = Map.of("action","list_schedules","doctorId", Integer.parseInt(id));
-            Map resp = sendJsonRequest(req);
+            Map resp = controller.listSchedules(Integer.parseInt(id));
             if ("OK".equals(resp.get("status"))) showTable((List)resp.get("data"));
             else addMessage("ERROR: " + resp.get("message"));
         } catch (Exception ex) { addMessage("错误: " + ex.getMessage()); }
     }
 
     private void onLogin(ActionEvent e) {
-        String user = userField.getText();
-        String pass = new String(passField.getPassword());
+        onLogin(loginPanel.getUsername(), loginPanel.getPassword());
+    }
+
+    private void onLogin(String user, String pass) {
         try {
-            Map req = Map.of("action","login","username",user,"password",pass);
-            Map resp = sendJsonRequest(req);
+            Map resp = controller.login(user, pass);
             if ("OK".equals(resp.get("status"))) {
                 String role = (String) resp.getOrDefault("role","PATIENT");
                 currentUser = user; currentRole = role;
                 addMessage("登录成功。角色: " + role);
+                showAppPage();
                 updateUIForRole();
             } else {
                 addMessage("登录失败: " + resp.get("message"));
@@ -470,8 +459,7 @@ public class ClientApp {
                 if (idcard == null || idcard.length() < 6) { idcardF.setBorder(new LineBorder(Color.RED,1)); ok=false; }
                 if (!ok) { addMessage("注册校验未通过，请修正红色字段后重试。保留输入以便修改。"); continue; }
                 try {
-                    Map req = Map.of("action","register","username",username,"password",password,"fullname",fullname==null?"":fullname,"idcard",idcard==null?"":idcard,"phone",phone==null?"":phone);
-                    Map resp = sendJsonRequest(req);
+                    Map resp = controller.register(username, password, fullname, idcard, phone);
                     if ("OK".equals(resp.get("status"))) addMessage("注册成功，请使用用户名和密码登录。");
                     else addMessage("注册失败: " + resp.get("message"));
                     return;
@@ -481,12 +469,13 @@ public class ClientApp {
 
     private void onLogout() {
         try {
-            if (currentUser!=null) sendJsonRequest(Map.of("action","logout"));
+            if (currentUser!=null) controller.logout();
         } catch (Exception ignored) {}
         currentUser = null; currentRole = null;
         updateUIForRole();
         addMessage("已退出登录。");
-        try { if (socket!=null) socket.close(); } catch (Exception ignored) {}
+        try { service.close(); } catch (Exception ignored) {}
+        showLoginPage();
     }
 
     private void onUpdateAccount() {
@@ -506,8 +495,7 @@ public class ClientApp {
         if (password==null) password = "";
         if (password.length()>0 && password.length()<6) { addMessage("密码需至少6字符"); return; }
         try {
-            Map req = Map.of("action","update_account","password",password,"fullname",fullname==null?"":fullname,"phone",phone==null?"":phone);
-            Map resp = sendJsonRequest(req);
+            Map resp = controller.updateAccount(password, fullname, phone);
             addMessage(String.valueOf(resp));
         } catch (Exception ex) { addMessage("错误: " + ex.getMessage()); }
     }
@@ -518,30 +506,41 @@ public class ClientApp {
         FormDialog fd = new FormDialog(frame, "确认注销", cp);
         int r = fd.showDialog(); if (r!=FormDialog.OK) return;
         try {
-            Map resp = sendJsonRequest(Map.of("action","delete_account"));
+            Map resp = controller.deleteAccount();
             addMessage(String.valueOf(resp));
             if ("OK".equals(resp.get("status"))) { currentUser=null; currentRole=null; updateUIForRole(); }
         } catch (Exception ex) { addMessage("错误: " + ex.getMessage()); }
     }
 
     private void updateUIForRole() {
+        boolean logged = currentUser != null;
         boolean isAdmin = "ADMIN".equals(currentRole);
-        addDoctorBtn.setEnabled(isAdmin);
-        updateDoctorBtn.setEnabled(isAdmin);
-        addScheduleBtn.setEnabled(isAdmin);
-        importXlsBtn.setEnabled(isAdmin);
-        exportApptsBtn.setEnabled(isAdmin);
-        genReportBtn.setEnabled(isAdmin);
-        listSchedulesBtn.setEnabled(true);
-        updateAccountBtn.setEnabled(currentUser!=null && "PATIENT".equals(currentRole));
-        deleteAccountBtn.setEnabled(currentUser!=null && "PATIENT".equals(currentRole));
-        logoutBtn.setEnabled(currentUser!=null);
-        // show or hide main action buttons depending on login state
+        boolean isPatient = "PATIENT".equals(currentRole);
+
+        addDoctorBtn.setVisible(logged && isAdmin);
+        updateDoctorBtn.setVisible(logged && isAdmin);
+        addScheduleBtn.setVisible(logged && isAdmin);
+        importXlsBtn.setVisible(logged && isAdmin);
+        exportApptsBtn.setVisible(logged && isAdmin);
+        genReportBtn.setVisible(logged && isAdmin);
+
+        listSchedulesBtn.setVisible(logged);
+        listApptsBtn.setVisible(logged);
+        updateAccountBtn.setVisible(logged && isPatient);
+        deleteAccountBtn.setVisible(logged && isPatient); // bottom bar copy hidden for admins
+        logoutBtn.setVisible(logged);
+        myApptsBtn.setVisible(logged && isPatient);
+        // top bar actions: logout always visible when logged; delete hidden for admin
+        appPanel.getLogoutButton().setVisible(logged);
+        appPanel.getDeleteAccountButton().setVisible(logged && isPatient);
+        if (topUserLabel != null) {
+            String userText = logged ? "当前用户: " + currentUser + " (" + currentRole + ")" : "未登录";
+            topUserLabel.setText(userText);
+        }
+
         if (buttonScroll != null) {
-            boolean visible = currentUser != null;
             SwingUtilities.invokeLater(() -> {
-                buttonScroll.setVisible(visible);
-                // revalidate to force layout update (fix: needed to show after login without manual resize)
+                buttonScroll.setVisible(logged);
                 if (frame != null) { frame.validate(); frame.repaint(); }
             });
         }
@@ -555,12 +554,10 @@ public class ClientApp {
         });
     }
 
-    private void addSidebarButton(JPanel panel, JButton b) {
-        b.setAlignmentX(Component.LEFT_ALIGNMENT);
-        b.setMaximumSize(new Dimension(240, 30));
+    private void addActionButton(JPanel panel, JButton b) {
+        b.setPreferredSize(new Dimension(170, 32));
         b.setFocusable(false);
         panel.add(b);
-        panel.add(Box.createRigidArea(new Dimension(0,6)));
     }
 
     private void doImportXls() {
@@ -572,14 +569,14 @@ public class ClientApp {
         try {
             byte[] data = java.nio.file.Files.readAllBytes(f.toPath());
             String b64 = java.util.Base64.getEncoder().encodeToString(data);
-            Map resp = sendJsonRequest(Map.of("action","import_doctors_xls","content", b64));
+            Map resp = controller.importDoctorsXls(b64);
             addMessage(String.valueOf(resp));
         } catch (Exception ex) { addMessage("错误: " + ex.getMessage()); }
     }
 
     private void doExportAppointmentsXls() {
         try {
-            Map resp = sendJsonRequest(Map.of("action","export_appointments_xls"));
+            Map resp = controller.exportAppointmentsXls();
             if (!"OK".equals(resp.get("status"))) { addMessage("ERROR: " + resp.get("message")); return; }
             String b64 = (String) resp.get("content");
             byte[] data = java.util.Base64.getDecoder().decode(b64);
@@ -594,7 +591,7 @@ public class ClientApp {
 
     private void doGenerateReportPdf() {
         try {
-            Map resp = sendJsonRequest(Map.of("action","generate_report_pdf"));
+            Map resp = controller.generateReportPdf();
             if (!"OK".equals(resp.get("status"))) { addMessage("ERROR: " + resp.get("message")); return; }
             String b64 = (String) resp.get("content");
             byte[] data = java.util.Base64.getDecoder().decode(b64);
@@ -605,31 +602,6 @@ public class ClientApp {
             java.nio.file.Files.write(chooser.getSelectedFile().toPath(), data);
             addMessage("已保存: " + chooser.getSelectedFile().getAbsolutePath());
         } catch (Exception ex) { addMessage("错误: " + ex.getMessage()); }
-    }
-
-    private void ensureConnection() throws IOException {
-        if (socket!=null && socket.isConnected() && !socket.isClosed()) return;
-        // cleanup old socket if any
-        try { if (socket!=null) socket.close(); } catch (Exception ignore) {}
-        socket = new Socket(HOST, PORT);
-        in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-        out = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
-    }
-
-    private Map sendJsonRequest(Map req) throws IOException {
-        ensureConnection();
-        try {
-            String s = mapper.writeValueAsString(req);
-            out.write(s);
-            out.write("\n");
-            out.flush();
-            String line = in.readLine();
-            if (line == null) throw new IOException("服务器关闭连接");
-            Map resp = mapper.readValue(line, Map.class);
-            return resp;
-        } catch (IOException ex) {
-            throw ex;
-        }
     }
 
     private void showTable(List<Map> data) {
@@ -676,5 +648,45 @@ public class ClientApp {
             }
         }
         return ok;
+    }
+
+    private void showAppPage() {
+        if (viewLayout != null) {
+            viewLayout.show(viewPanel, "app");
+        }
+        startClock();
+    }
+
+    private void showLoginPage() {
+        if (viewLayout != null) {
+            viewLayout.show(viewPanel, "login");
+        }
+        stopClock();
+        if (displayPanel != null) {
+            displayPanel.removeAll();
+            displayPanel.add(new JLabel("请先登录以查看数据", SwingConstants.CENTER), BorderLayout.CENTER);
+            displayPanel.revalidate(); displayPanel.repaint();
+        }
+    }
+
+    private void startClock() {
+        if (clockTimer != null) clockTimer.stop();
+        clockTimer = new javax.swing.Timer(1000, evt -> {
+            if (topTimeLabel != null) {
+                topTimeLabel.setText(java.time.LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
+            }
+        });
+        clockTimer.start();
+    }
+
+    private void stopClock() {
+        if (clockTimer != null) clockTimer.stop();
+        if (topTimeLabel != null) topTimeLabel.setText("--:--:--");
+    }
+
+    private void onExit() {
+        try { if (currentUser!=null) controller.logout(); } catch (Exception ignored) {}
+        try { service.close(); } catch (Exception ignored) {}
+        System.exit(0);
     }
 }
